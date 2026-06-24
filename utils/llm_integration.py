@@ -14,24 +14,18 @@ def get_llm(model_name="gemma3:1b"):
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
+from utils.config_manager import load_config
+
 def get_rag_chain(model_name="gemma3:1b"):
     """
     Creates a conversational retrieval chain for the Admin Knowledge Base using LCEL.
     """
     llm = get_llm(model_name=model_name)
     retriever = get_retriever()
+    config = load_config()
     
     # Define prompt template for RAG
-    template = """Você é um assistente especialista em comércio exterior, importação e exportação.
-Use os trechos de contexto a seguir para responder à pergunta. 
-Se você não sabe a resposta baseada no contexto, diga que não sabe e não invente informações.
-
-Contexto:
-{context}
-
-Pergunta: {question}
-
-Resposta:"""
+    template = config.get("prompt_rag")
     
     prompt = PromptTemplate.from_template(template)
     
@@ -49,19 +43,9 @@ def get_document_qa_chain(model_name="gemma3:1b"):
     Creates a simple QA chain for analyzing a specific uploaded document using LCEL.
     """
     llm = get_llm(model_name=model_name)
+    config = load_config()
     
-    template = """Você é um assistente especialista em comércio exterior. 
-O usuário fez o upload de um documento de importação/exportação. 
-Aqui está o texto extraído do documento:
-
-{context}
-
-Com base nesse documento, responda à pergunta do usuário. 
-Se a informação não estiver no documento, diga que não encontrou.
-
-Pergunta: {question}
-
-Resposta:"""
+    template = config.get("prompt_doc")
     
     prompt = PromptTemplate.from_template(template)
     

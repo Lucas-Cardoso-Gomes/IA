@@ -44,6 +44,42 @@ def ingest_document(file_obj, filename):
     
     return True, f"Successfully ingested {len(chunks)} chunks from {filename}."
 
+def ingest_from_directory(directory_path):
+    """
+    Reads all supported files from a directory, ingests them into the vector store,
+    and deletes them afterwards.
+    """
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path, exist_ok=True)
+        return False, f"Directory '{directory_path}' was not found. Created empty directory."
+
+    processed_files = []
+    errors = []
+
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, 'rb') as f:
+                    file_bytes = io.BytesIO(f.read())
+                    success, msg = ingest_document(file_bytes, file)
+                    if success:
+                        processed_files.append(file)
+                        os.remove(file_path) # Delete after successful ingestion
+                    else:
+                        errors.append(f"Failed to ingest {file}: {msg}")
+            except Exception as e:
+                errors.append(f"Error processing {file_path}: {str(e)}")
+
+    if not processed_files and not errors:
+        return False, f"No files found in '{directory_path}'."
+
+    summary = f"Successfully ingested and deleted {len(processed_files)} files."
+    if errors:
+        summary += f"\nEncountered {len(errors)} errors:\n" + "\n".join(errors)
+
+    return len(processed_files) > 0, summary
+
 def get_retriever():
     """Returns a retriever for the vector store."""
     vector_store = get_vector_store()
