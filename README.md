@@ -1,2 +1,1 @@
-# IA
-IA
+streamlit run app.py
