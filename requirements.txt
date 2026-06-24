@@ -1,0 +1,14 @@
+streamlit
+langchain
+langchain-community
+langchain-huggingface
+langchain-chroma
+chromadb
+pytesseract
+pdfplumber
+python-docx
+openpyxl
+python-pptx
+Pillow
+sentence-transformers
+pypdf
