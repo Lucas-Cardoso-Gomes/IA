@@ -2,3 +2,6 @@ __pycache__/
 config.json
 /utils/__pycache__
 *.pyc
+/importar_treino
+/utils/__pycache__
+*.pyc
