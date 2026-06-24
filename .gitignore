@@ -5,3 +5,5 @@ config.json
 /importar_treino
 /utils/__pycache__
 *.pyc
+/data/chroma_db
+/data
