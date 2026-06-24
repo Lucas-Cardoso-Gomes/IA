@@ -7,7 +7,7 @@ DEFAULT_CONFIG = {
     "admin_user": "admin",
     "admin_pass": "admin",
     "prompt_rag": """Você é um assistente especialista em comércio exterior, importação e exportação.
-Use os trechos de contexto a seguir para responder à pergunta.
+Use os trechos de contexto a seguir para responder à pergunta. 
 Se você não sabe a resposta baseada no contexto, diga que não sabe e não invente informações.
 
 Contexto:
@@ -16,13 +16,13 @@ Contexto:
 Pergunta: {question}
 
 Resposta:""",
-    "prompt_doc": """Você é um assistente especialista em comércio exterior.
-O usuário fez o upload de um documento de importação/exportação.
+    "prompt_doc": """Você é um assistente especialista em comércio exterior. 
+O usuário fez o upload de um documento de importação/exportação. 
 Aqui está o texto extraído do documento:
 
 {context}
 
-Com base nesse documento, responda à pergunta do usuário.
+Com base nesse documento, responda à pergunta do usuário. 
 Se a informação não estiver no documento, diga que não encontrou.
 
 Pergunta: {question}

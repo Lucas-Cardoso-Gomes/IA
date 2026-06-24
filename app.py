@@ -70,15 +70,20 @@ with tab_admin:
                 st.success("Prompts atualizados com sucesso!")
 
         st.header("Treinamento da Base de Conhecimento (Fase 2)")
-        st.write("Faça upload de procedimentos, manuais e legislações para treinar o assistente.")
+        
+        st.subheader("Opção 1: Upload de Documentos")
+        st.write("Faça upload de procedimentos, manuais, legislações ou pacotes ZIP para treinar o assistente.")
+        
+        from utils.rag_engine import ingest_document, ingest_from_directory
+        from utils.document_parser import extract_text_from_file
 
         uploaded_kb_files = st.file_uploader(
-            "Selecione documentos (PDF, DOCX, etc)",
-            accept_multiple_files=True,
+            "Selecione documentos ou arquivo ZIP", 
+            accept_multiple_files=True, 
             key="kb_uploader"
         )
-
-        if st.button("Processar e Treinar Documentos"):
+        
+        if st.button("Processar e Treinar Documentos (Upload)"):
             if uploaded_kb_files:
                 with st.spinner("Processando documentos..."):
                     for file in uploaded_kb_files:
@@ -92,45 +97,64 @@ with tab_admin:
             else:
                 st.warning("Por favor, selecione ao menos um documento.")
 
+        st.markdown("---")
+        st.subheader("Opção 2: Treinar a partir do Servidor Local")
+        st.write("Processa e ingere automaticamente todos os arquivos e pastas colocados na pasta `importar_treino` no servidor. Os arquivos serão apagados após o processamento.")
+        
+        if st.button("Processar Pasta 'importar_treino'"):
+            with st.spinner("Processando pasta local..."):
+                success, msg = ingest_from_directory("importar_treino")
+                if success:
+                    st.success(msg)
+                else:
+                    st.warning(msg)
+
 with tab_user:
     st.header("Análise de Documentos e Assistente (Fase 1 e 2)")
     
     with st.expander("Anexar Documento para Análise Específica", expanded=not st.session_state.current_doc_text):
-        st.write("Anexe um documento de importação/exportação (ex: Invoice, PL) para analisar ou deixe em branco para usar a Base de Conhecimento geral.")
+        st.write("Anexe um ou mais documentos de importação/exportação (ex: Invoice, PL, ZIP com todo o processo) para analisar ou deixe em branco para usar a Base de Conhecimento geral.")
         
-        user_doc = st.file_uploader(
-            "Anexar documento (opcional)", 
-            accept_multiple_files=False, 
+        user_docs = st.file_uploader(
+            "Anexar documento(s) ou ZIP", 
+            accept_multiple_files=True, 
             key="user_doc_uploader"
         )
         
-        if user_doc:
-            if user_doc.name != st.session_state.current_doc_name:
-                with st.spinner("Lendo e extraindo texto do documento..."):
-                    file_bytes = io.BytesIO(user_doc.read())
-                    extracted_text = extract_text_from_file(file_bytes, user_doc.name)
-                    st.session_state.current_doc_text = extracted_text
-                    st.session_state.current_doc_name = user_doc.name
-                    st.session_state.chat_history_doc = [] # Reset chat when new doc uploaded
-                st.success(f"Documento '{user_doc.name}' carregado!")
+        if user_docs:
+            combined_names = ", ".join([doc.name for doc in user_docs])
+            if combined_names != st.session_state.current_doc_name:
+                with st.spinner("Lendo e extraindo texto dos documentos..."):
+                    all_extracted_text = ""
+                    for doc in user_docs:
+                        file_bytes = io.BytesIO(doc.read())
+                        extracted_text = extract_text_from_file(file_bytes, doc.name)
+                        all_extracted_text += f"\n\n--- Início do Documento: {doc.name} ---\n\n"
+                        all_extracted_text += extracted_text
+                        all_extracted_text += f"\n\n--- Fim do Documento: {doc.name} ---\n\n"
+                        
+                    st.session_state.current_doc_text = all_extracted_text
+                    st.session_state.current_doc_name = combined_names
+                    st.session_state.chat_history_doc = [] # Reset chat when new docs uploaded
+                st.success(f"Documentos carregados!")
             
             st.text_area("Texto Extraído (Visualização Parcial)", st.session_state.current_doc_text[:1000] + "..." if len(st.session_state.current_doc_text) > 1000 else st.session_state.current_doc_text, height=150, disabled=True)
                 
-            if st.button("Limpar Documento Anexado"):
+            if st.button("Limpar Documentos Anexados"):
                 st.session_state.current_doc_text = ""
                 st.session_state.current_doc_name = ""
                 st.rerun()
 
     mode = "Documento Específico" if st.session_state.current_doc_text else "Base de Conhecimento Geral"
     st.info(f"Modo de Chat atual: **{mode}**")
-
+    
     # Display chat messages in the main area to allow chat_input to stick to bottom
     chat_history = st.session_state.chat_history_doc if st.session_state.current_doc_text else st.session_state.chat_history_rag
-
+    
     for msg in chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-
+    
     # Chat input at the root level of the tab
     if prompt := st.chat_input("Digite sua pergunta..."):
         # Add user message to history
@@ -148,7 +172,7 @@ with tab_user:
                     else:
                         # Ask RAG
                         response = ask_rag(prompt, model_name=model_choice)
-
+                    
                     st.markdown(response)
                     chat_history.append({"role": "assistant", "content": response})
                 except Exception as e:
