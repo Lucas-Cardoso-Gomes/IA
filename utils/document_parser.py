@@ -7,6 +7,7 @@ import pdfplumber
 import docx
 import openpyxl
 from pptx import Presentation
+import pandas as pd
 
 def extract_text_from_file(file_obj, filename):
     """
@@ -31,6 +32,7 @@ def extract_text_from_file(file_obj, filename):
         elif ext == '.pdf':
             with pdfplumber.open(file_obj) as pdf:
                 for page in pdf.pages:
+                    # Extract regular text
                     extracted = page.extract_text()
                     if extracted:
                         text += extracted + "\n"
@@ -38,17 +40,27 @@ def extract_text_from_file(file_obj, filename):
                         # Fallback to OCR if PDF page is an image
                         img = page.to_image().original
                         text += pytesseract.image_to_string(img, lang='por+eng') + "\n"
+
+                    # Extract tables as markdown
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if table:
+                            df = pd.DataFrame(table[1:], columns=table[0])
+                            # Clean up None/NaN values
+                            df = df.fillna("")
+                            text += "\n" + df.to_markdown(index=False) + "\n"
+
         elif ext in ['.docx', '.doc']:
             doc = docx.Document(file_obj)
             for para in doc.paragraphs:
                 text += para.text + "\n"
         elif ext in ['.xlsx', '.xls']:
-            wb = openpyxl.load_workbook(file_obj, data_only=True)
-            for sheet in wb.worksheets:
-                text += f"Sheet: {sheet.title}\n"
-                for row in sheet.iter_rows(values_only=True):
-                    row_text = " ".join([str(cell) for cell in row if cell is not None])
-                    text += row_text + "\n"
+            xls = pd.ExcelFile(file_obj)
+            for sheet_name in xls.sheet_names:
+                text += f"\n### Sheet: {sheet_name}\n"
+                df = pd.read_excel(xls, sheet_name=sheet_name)
+                df = df.fillna("")
+                text += df.to_markdown(index=False) + "\n"
         elif ext in ['.pptx', '.ppt']:
             prs = Presentation(file_obj)
             for slide in prs.slides:
