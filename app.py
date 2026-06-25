@@ -155,25 +155,82 @@ with tab_user:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
     
+    from langchain_core.messages import HumanMessage, AIMessage
+    from langchain_core.documents import Document
+
+    # Helper function to convert session state chat history to LangChain messages
+    def get_langchain_history(history):
+        langchain_history = []
+        for msg in history:
+            if msg["role"] == "user":
+                langchain_history.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                langchain_history.append(AIMessage(content=msg["content"]))
+        return langchain_history
+
     # Chat input at the root level of the tab
     if prompt := st.chat_input("Digite sua pergunta..."):
-        # Add user message to history
-        chat_history.append({"role": "user", "content": prompt})
-        
+        # Display user message immediately
         with st.chat_message("user"):
             st.markdown(prompt)
             
         with st.chat_message("assistant"):
-            with st.spinner("Pensando..."):
-                try:
-                    if st.session_state.current_doc_text:
-                        # Ask about specific document
-                        response = ask_document(prompt, st.session_state.current_doc_text, model_name=model_choice)
-                    else:
-                        # Ask RAG
-                        response = ask_rag(prompt, model_name=model_choice)
+            try:
+                # Convert history
+                current_lc_history = get_langchain_history(chat_history)
+
+                full_response = ""
+                source_documents = []
+
+                if st.session_state.current_doc_text:
+                    # Ask about specific document
+                    chain = ask_document(prompt, st.session_state.current_doc_text, chat_history=current_lc_history, model_name=model_choice)
+
+                    # We wrap the text in a Document to match RAG output format for citations
+                    source_documents.append(Document(page_content=st.session_state.current_doc_text, metadata={"source": st.session_state.current_doc_name}))
                     
-                    st.markdown(response)
-                    chat_history.append({"role": "assistant", "content": response})
-                except Exception as e:
-                    st.error(f"Erro ao se comunicar com a IA: {str(e)}\n\n(Verifique se o Ollama está rodando com o modelo selecionado)")
+                    # Create a generator for streaming
+                    def generate_doc_response():
+                        for chunk in chain.stream({
+                            "input": prompt,
+                            "chat_history": current_lc_history,
+                            "context": source_documents
+                        }):
+                            yield chunk
+
+                    full_response = st.write_stream(generate_doc_response())
+
+                else:
+                    # Ask RAG
+                    chain = ask_rag(prompt, chat_history=current_lc_history, model_name=model_choice)
+
+                    def generate_rag_response():
+                        # Use .stream to get chunks and extract context
+                        for chunk in chain.stream({
+                            "input": prompt,
+                            "chat_history": current_lc_history
+                        }):
+                            if "context" in chunk:
+                                source_documents.extend(chunk["context"])
+                            if "answer" in chunk:
+                                yield chunk["answer"]
+
+                    full_response = st.write_stream(generate_rag_response())
+
+                # Append to history
+                chat_history.append({"role": "user", "content": prompt})
+                chat_history.append({"role": "assistant", "content": full_response})
+
+                # Render Citations (Sources)
+                if source_documents:
+                    with st.expander("Fontes utilizadas"):
+                        for i, doc in enumerate(source_documents):
+                            source_name = doc.metadata.get("source", "Documento desconhecido")
+                            st.markdown(f"**Fonte {i+1}: {source_name}**")
+                            # Truncate content for display
+                            preview_content = doc.page_content[:500] + "..." if len(doc.page_content) > 500 else doc.page_content
+                            st.markdown(f"> {preview_content}")
+                            st.markdown("---")
+
+            except Exception as e:
+                st.error(f"Erro ao se comunicar com a IA: {str(e)}\n\n(Verifique se o Ollama está rodando com o modelo selecionado)")

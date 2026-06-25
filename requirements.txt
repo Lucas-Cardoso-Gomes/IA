@@ -12,3 +12,5 @@ python-pptx
 Pillow
 sentence-transformers
 pypdf
+pandas
+tabulate

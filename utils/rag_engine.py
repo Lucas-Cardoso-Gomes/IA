@@ -83,4 +83,4 @@ def ingest_from_directory(directory_path):
 def get_retriever():
     """Returns a retriever for the vector store."""
     vector_store = get_vector_store()
-    return vector_store.as_retriever(search_kwargs={"k": 3})
+    return vector_store.as_retriever(search_type="mmr", search_kwargs={"k": 8})
