@@ -6,13 +6,13 @@ import asyncio
 
 class AuditorAgent:
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
     async def run_challenger_query(self, content, check_type):
         """Simula um agente desafiador para uma verificação específica"""
         prompt = f"Analise o seguinte conteúdo para {check_type}: {content}. Retorne apenas as divergências encontradas."
         response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gemma3:1b",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content
@@ -51,7 +51,7 @@ class AuditorAgent:
         """
 
         response = self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+            model="gemma3:4b",
             messages=[{"role": "user", "content": prompt}],
             response_format={ "type": "json_object" }
         )
