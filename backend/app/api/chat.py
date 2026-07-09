@@ -2,13 +2,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
-from ...database import get_db
-from ...services.search import search_service
+from ..database import get_db
+from ..services.search import search_service
 from openai import OpenAI
 import os
 
 router = APIRouter()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
 class ChatRequest(BaseModel):
     message: str
@@ -23,7 +23,7 @@ async def query_notebook(req: ChatRequest, db: Session = Depends(get_db)):
     messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"Contexto Recueperado:\n{context_text}"}]
     messages.extend(req.history)
     messages.append({"role": "user", "content": req.message})
-    response = client.chat.completions.create(model="gpt-4-turbo-preview", messages=messages)
+    response = client.chat.completions.create(model="gemma3:4b", messages=messages)
     answer = response.choices[0].message.content
     citations = [{"document_id": str(c.document_id), "page": c.page_number, "bounding_box": c.bounding_box} for c in context_chunks]
     return {"answer": answer, "citations": citations}
