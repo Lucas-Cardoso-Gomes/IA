@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+openai
+pydantic
+pgvector
+llama-parse
+python-multipart
