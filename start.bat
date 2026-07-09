@@ -1,6 +1,2 @@
 @echo off
-echo Instalando dependencias...
-pip install -r backend\requirements.txt
-
-echo Iniciando a aplicacao...
-streamlit run app.py
+python run.py
