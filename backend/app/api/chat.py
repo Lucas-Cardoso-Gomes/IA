@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
-from ...database import get_db
-from ...services.search import search_service
+from ..database import get_db
+from ..services.search import search_service
 from openai import OpenAI
 import os
 

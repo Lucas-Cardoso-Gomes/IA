@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
-from ...database import get_db
-from ...services.ingestion import ingestion_service
-from ...models.models import Document, Notebook
+from ..database import get_db
+from ..services.ingestion import ingestion_service
+from ..models.models import Document, Notebook
 import shutil
 import os
 import uuid

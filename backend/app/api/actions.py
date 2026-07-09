@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ...database import get_db
-from ...agents.validator import auditor_agent
-from ...integrations.siscomex import siscomex_client
+from ..database import get_db
+from ..agents.validator import auditor_agent
+from ..integrations.siscomex import siscomex_client
 import json
 
 router = APIRouter()
