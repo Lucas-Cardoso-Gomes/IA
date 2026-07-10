@@ -26,6 +26,8 @@ class ParserService:
                 from PIL import Image
                 import io
 
+                pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
                 doc = fitz.open(file_path)
                 for i, page in enumerate(doc):
                     text = page.get_text("text")
