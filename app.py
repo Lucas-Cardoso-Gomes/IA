@@ -155,7 +155,7 @@ def render_chat_interface(notebook_id):
                         api_messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state[state_key]])
 
                         client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-                        response = client.chat.completions.create(model="gemma3:4b", messages=api_messages)
+                        response = client.chat.completions.create(model="gemma3:1b", messages=api_messages)
 
                         answer = response.choices[0].message.content
                         citations = [{"document_id": str(c.document_id), "page": c.page_number} for c in context_chunks]
