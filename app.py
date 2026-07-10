@@ -61,6 +61,15 @@ def render_notebook_workspace():
         nb_options = {str(nb.id): nb.title for nb in notebooks}
         selected_nb_id = st.sidebar.selectbox("Selecionar Processo", options=list(nb_options.keys()), format_func=lambda x: nb_options[x])
 
+        # Delete notebook option
+        if st.sidebar.button("Apagar Notebook"):
+            nb_to_delete = db.query(Notebook).filter(Notebook.id == selected_nb_id).first()
+            if nb_to_delete:
+                db.delete(nb_to_delete)
+                db.commit()
+                st.sidebar.success("Notebook apagado!")
+                st.rerun()
+
         st.subheader(f"Processo: {nb_options[selected_nb_id]}")
 
         col1, col2 = st.columns([0.6, 0.4])
@@ -85,7 +94,14 @@ def render_notebook_workspace():
             docs = db.query(Document).filter(Document.notebook_id == selected_nb_id).all()
             if docs:
                 for doc in docs:
-                    st.write(f"- 📄 {doc.filename}")
+                    doc_col1, doc_col2 = st.columns([0.8, 0.2])
+                    with doc_col1:
+                        st.write(f"- 📄 {doc.filename}")
+                    with doc_col2:
+                        if st.button("🗑️ Remover", key=f"del_doc_{doc.id}"):
+                            db.delete(doc)
+                            db.commit()
+                            st.rerun()
 
                 if st.button("Auditar Notebook (Processamento Inteligente)"):
                     with st.spinner("Analisando documentos (LLM Auditor)..."):

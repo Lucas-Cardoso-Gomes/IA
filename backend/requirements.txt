@@ -7,3 +7,6 @@ python-docx
 numpy
 sentence-transformers
 torchvision
+pytesseract
+pdf2image
+Pillow
