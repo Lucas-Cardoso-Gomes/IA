@@ -164,14 +164,20 @@ def render_chat_interface(notebook_id):
                             # 1. RAG Search
                             context_chunks = search_service.hybrid_search(db, prompt, str(notebook_id))
 
-                        system_prompt = "Você é um assistente especialista em logística aduaneira da PM Logística. Use as fontes fornecidas para responder."
+                        system_prompt = """
+                            Você é um assistente especialista em logística aduaneira da PM Logística.
+                            Regras OBRIGATÓRIAS:
+                            1. Responda APENAS com base no 'Contexto Recuperado' fornecido.
+                            2. NUNCA invente nomes, datas, números ou informações que não estejam explicitamente no texto.
+                            3. Se a informação não estiver no contexto, responda: 'Não encontrei essa informação no documento'.
+                            """
                         context_text = "\n\n".join([f"Fonte: {c.document_id} Pág: {c.page_number}\n{c.content}" for c in context_chunks])
 
                         api_messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"Contexto Recueperado:\n{context_text}"}]
                         api_messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state[state_key]])
 
                         client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-                        response = client.chat.completions.create(model="gemma3:1b", messages=api_messages, temperature=0.0)
+                        response = client.chat.completions.create(model="gemma3:4b", messages=api_messages, temperature=0.0)
 
                         answer = response.choices[0].message.content
                         citations = [{"document_id": str(c.document_id), "page": c.page_number} for c in context_chunks]
