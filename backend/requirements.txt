@@ -1,7 +1,9 @@
 streamlit
 sqlalchemy
-psycopg2-binary
 openai
 pydantic
-pgvector
-llama-parse
+pymupdf
+python-docx
+numpy
+sentence-transformers
+torchvision

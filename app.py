@@ -9,6 +9,10 @@ from backend.app.models.models import Notebook, Document
 from backend.app.services.ingestion import ingestion_service
 from backend.app.services.search import search_service
 from backend.app.agents.validator import auditor_agent
+from backend.app.database import SessionLocal, engine, Base
+from backend.app.models.models import Notebook, Document
+
+Base.metadata.create_all(bind=engine)
 
 st.set_page_config(page_title="PM Logística - Inteligência Documental", layout="wide")
 
@@ -43,7 +47,7 @@ def render_notebook_workspace():
         new_nb_title = st.sidebar.text_input("Novo Processo (Notebook)")
         if st.sidebar.button("Criar Notebook"):
             if new_nb_title:
-                new_nb = Notebook(title=new_nb_title, user_id=uuid.uuid4()) # Mock user
+                new_nb = Notebook(title=new_nb_title, user_id=str(uuid.uuid4()))
                 db.add(new_nb)
                 db.commit()
                 st.sidebar.success("Criado!")

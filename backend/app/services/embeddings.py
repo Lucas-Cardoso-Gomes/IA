@@ -1,13 +1,13 @@
-import os
-from openai import OpenAI
+from sentence_transformers import SentenceTransformer
 
 class EmbeddingService:
     def __init__(self):
-        self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-        self.model = "gemma3:1b"
+        # Baixa um modelo leve e otimizado para embeddings na primeira execução
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def get_embedding(self, text: str):
         text = text.replace("\n", " ")
-        return self.client.embeddings.create(input=[text], model=self.model).data[0].embedding
+        # Gera o vetor matemático e converte para uma lista simples do Python
+        return self.model.encode(text).tolist()
 
 embedding_service = EmbeddingService()
