@@ -8,12 +8,43 @@ class AuditorAgent:
     def __init__(self):
         self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
-    async def run_challenger_query(self, content, check_type):
-        """Simula um agente desafiador para uma verificação específica"""
-        prompt = f"Analise o seguinte conteúdo para {check_type}: {content}. Retorne apenas as divergências encontradas."
+    async def analyze_context(self, content):
+        """Passo 1: Analisa os documentos para identificar o tipo e as informações presentes (ex: se tem peso, valores, etc)"""
+        prompt = f"""
+        Você é um analista de triagem de documentos de logística aduaneira.
+        Analise o seguinte conteúdo dos documentos anexados:
+
+        Documentos: {content}
+
+        Sua tarefa é identificar quais tipos de documentos estão presentes e, o mais importante, quais informações ESTRUTURAIS existem neles.
+        Por exemplo: existem informações de peso? Existem valores? Existe NCM listada? Existem informações do consignatário/remetente?
+
+        Não invente nada, apenas resuma o que realmente foi encontrado no texto, limitando-se estritamente aos dados presentes.
+        """
         response = self.client.chat.completions.create(
             model="gemma3:1b",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0
+        )
+        return response.choices[0].message.content
+
+    async def generate_audit_prompt(self, analysis_result):
+        """Passo 2: Cria um prompt personalizado com as verificações que fazem sentido para o contexto"""
+        prompt = f"""
+        Com base na seguinte análise dos documentos presentes em um processo aduaneiro:
+
+        Análise Inicial: {analysis_result}
+
+        Crie uma lista de "Verificações Requeridas" para uma auditoria aduaneira.
+        A regra de ouro é: SÓ INCLUA UMA VERIFICAÇÃO SE OS DADOS NECESSÁRIOS PARA ELA ESTIVEREM PRESENTES.
+        Por exemplo, não peça para verificar consistência de peso se não houver peso no documento. Não peça validação de NCM se não houver NCM.
+
+        Retorne APENAS a lista enumerada das verificações a serem feitas, sem nenhum outro texto antes ou depois.
+        """
+        response = self.client.chat.completions.create(
+            model="gemma3:1b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0
         )
         return response.choices[0].message.content
 
@@ -24,28 +55,28 @@ class AuditorAgent:
         chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(doc_ids)).all()
         full_context = "\n".join([f"Doc: {c.document_id} Content: {c.content}" for c in chunks])
 
-        # Parallel Inference Pattern (LLM Challenger)
-        # In a real scenario, we would trigger multiple LLM calls in parallel
-        check_tasks = [
-            self.run_challenger_query(full_context, "Consistência de Pesos (Bruto vs Líquido)"),
-            self.run_challenger_query(full_context, "Validação de NCM vs Descrição Comercial")
-        ]
+        # Passo 1: Analisa o conteúdo
+        analysis_result = await self.analyze_context(full_context)
         
-        # Simulating parallel execution results
-        # results = await asyncio.gather(*check_tasks)
+        # Passo 2: Gera o prompt de auditoria personalizado
+        custom_checks = await self.generate_audit_prompt(analysis_result)
 
+        # Passo 3: Auditoria final baseada apenas no que existe
         prompt = f"""
-        Você é o Auditor Chefe da PM Logística. Consolide os resultados da auditoria documental.
+        Você é o Auditor Chefe da PM Logística. Sua função é analisar EXCLUSIVAMENTE os documentos fornecidos e apontar problemas reais, sem inventar informações.
+
         Documentos: {full_context}
         
-        Verificações Requeridas:
-        1. Pesos: Compare Invoice, Packing List e CRT.
-        2. NCM: Valide se a NCM condiz com a descrição.
+        Faça rigorosamente APENAS as seguintes verificações:
+        {custom_checks}
+
+        Se algo solicitado não puder ser verificado devido à falta de informação nos documentos, não considere como erro, apenas ignore ou informe que não consta.
+        NUNCA invente dados como "peso não bate" se não houver peso no documento.
         
         Retorne um JSON estritamente com:
         {{
-            "divergencias": ["lista de strings"],
-            "riscos_aduaneiros": ["lista de strings"],
+            "divergencias": ["lista de strings com divergências reais baseadas apenas no texto"],
+            "riscos_aduaneiros": ["lista de strings com riscos encontrados"],
             "status": "APROVADO" ou "ATENÇÃO"
         }}
         """
@@ -53,7 +84,8 @@ class AuditorAgent:
         response = self.client.chat.completions.create(
             model="gemma3:4b",
             messages=[{"role": "user", "content": prompt}],
-            response_format={ "type": "json_object" }
+            response_format={ "type": "json_object" },
+            temperature=0.0
         )
 
         return response.choices[0].message.content
