@@ -22,11 +22,33 @@ class ParserService:
             # Processamento de arquivos PDF
             if ext == "pdf":
                 import fitz  # PyMuPDF
+                import pytesseract
+                from PIL import Image
+                import io
+
                 doc = fitz.open(file_path)
                 for i, page in enumerate(doc):
                     text = page.get_text("text")
                     if text.strip():
                         documents.append(LocalParsedDocument(text=text, page_number=i + 1))
+                    else:
+                        # Fallback for scanned PDF page
+                        pix = page.get_pixmap()
+                        img_bytes = pix.tobytes("png")
+                        img = Image.open(io.BytesIO(img_bytes))
+                        ocr_text = pytesseract.image_to_string(img, lang="por+eng")
+                        if ocr_text.strip():
+                            documents.append(LocalParsedDocument(text=ocr_text, page_number=i + 1))
+
+            # Processamento de imagens
+            elif ext in ["png", "jpg", "jpeg"]:
+                import pytesseract
+                from PIL import Image
+
+                img = Image.open(file_path)
+                ocr_text = pytesseract.image_to_string(img, lang="por+eng")
+                if ocr_text.strip():
+                    documents.append(LocalParsedDocument(text=ocr_text, page_number=1))
 
             # Processamento de arquivos Word
             elif ext == "docx":
