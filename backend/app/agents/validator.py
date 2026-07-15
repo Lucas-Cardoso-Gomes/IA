@@ -1,12 +1,16 @@
 from sqlalchemy.orm import Session
 from ..services.search import search_service
-from openai import OpenAI
-import os
+from backend.app.agents.base_agent import BaseAgent
+from backend.app.agents.compliance_agent import ComplianceAgent
+from backend.app.agents.finance_agent import FinanceAgent
+import json
 import asyncio
 
-class AuditorAgent:
+class AuditorAgent(BaseAgent):
     def __init__(self):
-        self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        super().__init__()
+        self.compliance_agent = ComplianceAgent()
+        self.finance_agent = FinanceAgent()
 
     async def analyze_context(self, content):
         """Passo 1: Analisa os documentos para identificar o tipo e as informações presentes (ex: se tem peso, valores, etc)"""
@@ -88,6 +92,18 @@ class AuditorAgent:
             temperature=0.0
         )
 
-        return response.choices[0].message.content
+        base_result = json.loads(response.choices[0].message.content)
+
+        # Consolidação com os agentes especialistas (executados em paralelo)
+        compliance_task = asyncio.create_task(self.compliance_agent.analyze(full_context))
+        finance_task = asyncio.create_task(self.finance_agent.analyze(full_context))
+
+        comp_res, fin_res = await asyncio.gather(compliance_task, finance_task)
+
+        # Mesclando os resultados
+        base_result["riscos_aduaneiros"].extend(comp_res.get("riscos", []))
+        base_result["divergencias"].extend(fin_res.get("divergencias_financeiras", []))
+
+        return json.dumps(base_result)
 
 auditor_agent = AuditorAgent()
