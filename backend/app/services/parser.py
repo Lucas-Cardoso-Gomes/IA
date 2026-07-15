@@ -1,23 +1,12 @@
 import os
+from backend.app.services.parsers.base_parser import LocalParsedDocument
+from backend.app.services.parsers.invoice_parser import InvoiceParser
+from backend.app.services.parsers.packing_list_parser import PackingListParser
+from backend.app.services.parsers.customs_docs_parser import CustomsDocsParser
 
-# Classe que imita a estrutura de retorno do LlamaParse para não quebrar o ingestion.py
-class LocalParsedDocument:
-    def __init__(self, text, page_number):
-        self.text = text
-        self.metadata = {
-            "page_number": page_number,
-            "bounding_box": {}
-        }
-
-class ParserService:
-    def __init__(self):
-        # Nenhuma API Key é necessária para rodar localmente
-        pass
-
-    async def parse_file(self, file_path: str):
+class DefaultGenericParser:
+    def parse(self, file_path: str, ext: str):
         documents = []
-        ext = file_path.lower().split('.')[-1]
-
         try:
             # Processamento de arquivos PDF
             if ext == "pdf":
@@ -26,15 +15,12 @@ class ParserService:
                 from PIL import Image
                 import io
 
-                pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
                 doc = fitz.open(file_path)
                 for i, page in enumerate(doc):
                     text = page.get_text("text")
                     if text.strip():
                         documents.append(LocalParsedDocument(text=text, page_number=i + 1))
                     else:
-                        # Fallback for scanned PDF page
                         pix = page.get_pixmap()
                         img_bytes = pix.tobytes("png")
                         img = Image.open(io.BytesIO(img_bytes))
@@ -59,7 +45,6 @@ class ParserService:
                 text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
                 documents.append(LocalParsedDocument(text=text, page_number=1))
 
-            # Adicione outras extensões se necessário
             else:
                 documents.append(LocalParsedDocument(
                     text=f"[Conteúdo não extraído. Formato {ext} requer OCR ou biblioteca específica]", 
@@ -69,10 +54,36 @@ class ParserService:
         except Exception as e:
             print(f"Erro ao processar {file_path}: {e}")
             
-        # Fallback caso o documento seja uma imagem ou PDF escaneado (sem texto selecionável)
         if not documents:
-             documents.append(LocalParsedDocument(text="[Documento vazio ou necessita de OCR (Reconhecimento Óptico de Caracteres)]", page_number=1))
+             documents.append(LocalParsedDocument(text="[Documento vazio ou necessita de OCR]", page_number=1))
              
         return documents
 
-parser_service = ParserService()
+class ParserServiceFactory:
+    def __init__(self):
+        # Nenhuma API Key é necessária para rodar localmente
+        # Futuramente, podemos injetar os parsers especialistas dinamicamente
+        self.specialized_parsers = [
+            # Descomentar quando houver lógica de roteamento por conteúdo
+            # InvoiceParser(),
+            # PackingListParser(),
+            # CustomsDocsParser()
+        ]
+        self.default_parser = DefaultGenericParser()
+
+    async def parse_file(self, file_path: str):
+        ext = file_path.lower().split('.')[-1]
+
+        # Padrão Factory / Strategy:
+        # Em uma implementação real avançada, leríamos as primeiras páginas para identificar se é Invoice ou Packing List.
+        # Aqui deixamos a infraestrutura pronta.
+
+        for parser in self.specialized_parsers:
+            if parser.can_handle(ext):
+                # O parser precisaria identificar se o conteúdo REALMENTE é dele.
+                # Como não temos IA de classificação na factory ainda, cairemos para o default.
+                pass
+
+        return self.default_parser.parse(file_path, ext)
+
+parser_service = ParserServiceFactory()

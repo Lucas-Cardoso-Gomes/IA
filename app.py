@@ -6,13 +6,12 @@ import json
 
 from backend.app.database import SessionLocal
 from backend.app.models.models import Notebook, Document
-from backend.app.services.ingestion import ingestion_service
+import requests
+import time
 from backend.app.services.search import search_service
-from backend.app.agents.validator import auditor_agent
 from backend.app.database import SessionLocal, engine, Base
+from backend.app.tasks import ingest_document_task, audit_notebook_task
 from backend.app.models.models import Notebook, Document
-
-Base.metadata.create_all(bind=engine)
 
 st.set_page_config(page_title="PM Logística - Inteligência Documental", layout="wide")
 
@@ -80,16 +79,14 @@ def render_notebook_workspace():
 
             if uploaded_file is not None:
                 if st.button("Adicionar Documento"):
-                    with st.spinner("Indexando..."):
-                        temp_dir = "temp_storage"
-                        os.makedirs(temp_dir, exist_ok=True)
-                        file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
-                        with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
+                    temp_dir = "temp_storage"
+                    os.makedirs(temp_dir, exist_ok=True)
+                    file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
 
-                        asyncio.run(ingestion_service.ingest_document(db, file_path, uploaded_file.name, notebook_id=selected_nb_id))
-                        st.success("Documento adicionado!")
-                        st.rerun()
+                    task = ingest_document_task.delay(file_path, uploaded_file.name, selected_nb_id, False)
+                    st.info(f"Tarefa de ingestão enviada (ID: {task.id}). Verifique em instantes.")
 
             docs = db.query(Document).filter(Document.notebook_id == selected_nb_id).all()
             if docs:
@@ -104,21 +101,34 @@ def render_notebook_workspace():
                             st.rerun()
 
                 if st.button("Auditar Notebook (Processamento Inteligente)"):
-                    with st.spinner("Analisando documentos (LLM Auditor)..."):
-                        try:
-                            result_str = asyncio.run(auditor_agent.audit_notebook(db, selected_nb_id))
-                            result = json.loads(result_str)
+                    task = audit_notebook_task.delay(selected_nb_id)
+                    st.session_state[f"audit_task_{selected_nb_id}"] = task.id
+                    st.info(f"Auditoria enviada para a fila! (Task ID: {task.id})")
 
-                            st.write("#### Resultado da Auditoria")
-                            st.write(f"**Status:** {result.get('status')}")
-                            st.write("**Divergências Encontradas:**")
-                            for d in result.get('divergencias', []):
-                                st.write(f"- {d}")
-                            st.write("**Riscos Aduaneiros:**")
-                            for r in result.get('riscos_aduaneiros', []):
-                                st.write(f"- {r}")
+                if f"audit_task_{selected_nb_id}" in st.session_state:
+                    task_id = st.session_state[f"audit_task_{selected_nb_id}"]
+                    if st.button("Consultar Status da Auditoria"):
+                        try:
+                            res = requests.get(f"http://localhost:8000/tasks/{task_id}").json()
+                            if res["task_status"] == "SUCCESS":
+                                result = res["task_result"]
+                                st.success("Auditoria Concluída!")
+                                st.write("#### Resultado da Auditoria")
+                                st.write(f"**Status:** {result.get('status')}")
+                                st.write("**Divergências Encontradas:**")
+                                for d in result.get('divergencias', []):
+                                    st.write(f"- {d}")
+                                st.write("**Riscos Aduaneiros:**")
+                                for r in result.get('riscos_aduaneiros', []):
+                                    st.write(f"- {r}")
+                                del st.session_state[f"audit_task_{selected_nb_id}"]
+                            elif res["task_status"] in ["PENDING", "STARTED"]:
+                                st.warning("Ainda processando...")
+                            else:
+                                st.error(f"Erro na auditoria: {res['task_result']}")
+                                del st.session_state[f"audit_task_{selected_nb_id}"]
                         except Exception as e:
-                            st.error(f"Erro na auditoria: {e}")
+                            st.error(f"Erro ao conectar com API de tarefas: {e}")
             else:
                 st.write("Nenhum documento neste notebook ainda.")
 
@@ -176,7 +186,14 @@ def render_chat_interface(notebook_id):
                         api_messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"Contexto Recueperado:\n{context_text}"}]
                         api_messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state[state_key]])
 
-                        client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+                        from backend.app.config import settings
+                        import os
+
+                        if settings.OPENAI_TELEMETRY.lower() == 'false':
+                            os.environ["OPENAI_TELEMETRY"] = "0"
+                            os.environ["OPENAI_DISABLE_TELEMETRY"] = "1"
+
+                        client = OpenAI(base_url=settings.OLLAMA_BASE_URL, api_key=settings.OLLAMA_API_KEY)
                         response = client.chat.completions.create(model="gemma3:4b", messages=api_messages, temperature=0.0)
 
                         answer = response.choices[0].message.content
