@@ -9,7 +9,8 @@ sentence-transformers
 torchvision
 pytesseract
 pdf2image
-Pillowpython-dotenv
+Pillow
+python-dotenv
 pydantic-settings
 celery
 redis
