@@ -31,3 +31,12 @@ class DocumentChunk(Base):
     page_number = Column(Integer)
     bounding_box = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    notebook_id = Column(String, ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=True)
+    role = Column(String(50), nullable=False) # "user" ou "assistant"
+    content = Column(String, nullable=False)
+    citations = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

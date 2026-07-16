@@ -12,7 +12,7 @@ from backend.app.services.search import search_service
 from backend.app.services.ingestion import ingestion_service
 from backend.app.database import SessionLocal, engine, Base
 from backend.app.tasks import ingest_document_task, audit_notebook_task
-from backend.app.models.models import Notebook, Document
+from backend.app.models.models import Notebook, Document, ChatMessage
 
 st.set_page_config(page_title="PM Logística - Inteligência Documental", layout="wide")
 
@@ -30,12 +30,66 @@ def get_db():
 # Main Layout Structure
 def main():
     st.sidebar.title("Navegação")
-    page = st.sidebar.radio("Ir para", ["Notebook Workspace", "Admin Dashboard"])
+    page = st.sidebar.radio("Ir para", ["Notebook Workspace", "Chat Avulso", "Admin Dashboard"])
 
     if page == "Notebook Workspace":
         render_notebook_workspace()
+    elif page == "Chat Avulso":
+        render_standalone_chat()
     elif page == "Admin Dashboard":
         render_admin_dashboard()
+
+def render_standalone_chat():
+    st.header("Chat Avulso")
+
+    with get_db() as db:
+        # Check if standalone notebook exists, create if not
+        standalone_nb = db.query(Notebook).filter(Notebook.id == "standalone").first()
+        if not standalone_nb:
+            standalone_nb = Notebook(id="standalone", title="Chat Avulso", user_id="system")
+            db.add(standalone_nb)
+            db.commit()
+
+        col1, col2 = st.columns([0.4, 0.6])
+
+        with col1:
+            st.write("### Anexos Temporários")
+            uploaded_files = st.file_uploader("Adicionar Fonte(s) (PDF, DOCX, Imagem)", type=["pdf", "docx", "png", "jpg"], key="standalone_uploader", accept_multiple_files=True)
+
+            if uploaded_files:
+                if st.button("Adicionar Documento(s)"):
+                    temp_dir = "temp_storage"
+                    os.makedirs(temp_dir, exist_ok=True)
+
+                    for uploaded_file in uploaded_files:
+                        file_size_mb = uploaded_file.size / (1024 * 1024)
+                        if file_size_mb > 100:
+                            st.warning(f"O arquivo {uploaded_file.name} possui {file_size_mb:.2f}MB (maior que 100MB). O processamento em segundo plano pode demorar. Você pode fechar e voltar mais tarde.")
+
+                        file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                        task = ingest_document_task.delay(file_path, uploaded_file.name, "standalone", False)
+                        st.info(f"Tarefa de ingestão de {uploaded_file.name} enviada (ID: {task.id}).")
+
+            docs = db.query(Document).filter(Document.notebook_id == "standalone").all()
+            if docs:
+                for doc in docs:
+                    doc_col1, doc_col2 = st.columns([0.8, 0.2])
+                    with doc_col1:
+                        st.write(f"- 📄 {doc.filename}")
+                    with doc_col2:
+                        if st.button("🗑️ Remover", key=f"del_doc_{doc.id}"):
+                            db.delete(doc)
+                            db.commit()
+                            st.rerun()
+            else:
+                st.write("Nenhum documento temporário neste chat.")
+
+        with col2:
+            st.write("### Chat Interface")
+            render_chat_interface("standalone")
 
 def render_notebook_workspace():
     st.header("Notebook Workspace")
@@ -53,7 +107,7 @@ def render_notebook_workspace():
                 st.sidebar.success("Criado!")
                 st.rerun()
 
-        notebooks = db.query(Notebook).all()
+        notebooks = db.query(Notebook).filter(Notebook.id != "standalone").all()
         if not notebooks:
             st.info("Crie um Notebook na barra lateral para começar.")
             return
@@ -76,18 +130,24 @@ def render_notebook_workspace():
 
         with col1:
             st.write("### Fontes do Notebook")
-            uploaded_file = st.file_uploader("Adicionar Fonte (PDF, DOCX, Imagem)", type=["pdf", "docx", "png", "jpg"], key="nb_uploader")
+            uploaded_files = st.file_uploader("Adicionar Fonte(s) (PDF, DOCX, Imagem)", type=["pdf", "docx", "png", "jpg"], key="nb_uploader", accept_multiple_files=True)
 
-            if uploaded_file is not None:
-                if st.button("Adicionar Documento"):
+            if uploaded_files:
+                if st.button("Adicionar Documento(s)"):
                     temp_dir = "temp_storage"
                     os.makedirs(temp_dir, exist_ok=True)
-                    file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
 
-                    task = ingest_document_task.delay(file_path, uploaded_file.name, selected_nb_id, False)
-                    st.info(f"Tarefa de ingestão enviada (ID: {task.id}). Verifique em instantes.")
+                    for uploaded_file in uploaded_files:
+                        file_size_mb = uploaded_file.size / (1024 * 1024)
+                        if file_size_mb > 100:
+                            st.warning(f"O arquivo {uploaded_file.name} possui {file_size_mb:.2f}MB (maior que 100MB). O processamento em segundo plano pode demorar. Você pode fechar e voltar mais tarde.")
+
+                        file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                        task = ingest_document_task.delay(file_path, uploaded_file.name, selected_nb_id, False)
+                        st.info(f"Tarefa de ingestão de {uploaded_file.name} enviada (ID: {task.id}).")
 
             docs = db.query(Document).filter(Document.notebook_id == selected_nb_id).all()
             if docs:
@@ -143,25 +203,38 @@ def render_chat_interface(notebook_id):
 
     state_key = f"messages_{notebook_id}"
 
-    # Initialize chat history
-    if state_key not in st.session_state:
-        st.session_state[state_key] = [{"role": "assistant", "content": "Olá! Sou seu assistente PM Logística. Como posso ajudar com os documentos deste processo hoje?"}]
+    with get_db() as db:
+        if state_key not in st.session_state:
+            db_messages = db.query(ChatMessage).filter(ChatMessage.notebook_id == str(notebook_id)).order_by(ChatMessage.created_at).all()
+            if db_messages:
+                st.session_state[state_key] = [{"role": m.role, "content": m.content, "citations": m.citations} for m in db_messages]
+            else:
+                initial_msg = {"role": "assistant", "content": "Olá! Sou seu assistente PM Logística. Como posso ajudar com os documentos deste processo hoje?"}
+                st.session_state[state_key] = [initial_msg]
+                db_msg = ChatMessage(notebook_id=str(notebook_id), role=initial_msg["role"], content=initial_msg["content"])
+                db.add(db_msg)
+                db.commit()
 
-    # Container for chat history
-    chat_container = st.container(height=500)
+        # Container for chat history
+        chat_container = st.container(height=500)
 
-    with chat_container:
-        for message in st.session_state[state_key]:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                if "citations" in message and message["citations"]:
-                    st.caption("Fontes:")
-                    for c in message["citations"]:
-                        st.caption(f"- Doc ID: {c['document_id']} (Pág: {c.get('page', 'N/A')})")
+        with chat_container:
+            for message in st.session_state[state_key]:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+                    if "citations" in message and message["citations"]:
+                        st.caption("Fontes:")
+                        for c in message["citations"]:
+                            st.caption(f"- Doc ID: {c['document_id']} (Pág: {c.get('page', 'N/A')})")
 
-    # Chat input
-    if prompt := st.chat_input("Pergunte qualquer coisa sobre o processo..."):
-        st.session_state[state_key].append({"role": "user", "content": prompt})
+        # Chat input
+        if prompt := st.chat_input("Pergunte qualquer coisa sobre o processo..."):
+            user_msg = {"role": "user", "content": prompt}
+            st.session_state[state_key].append(user_msg)
+
+            db_user_msg = ChatMessage(notebook_id=str(notebook_id), role=user_msg["role"], content=user_msg["content"])
+            db.add(db_user_msg)
+            db.commit()
 
         with chat_container:
             with st.chat_message("user"):
@@ -201,7 +274,12 @@ def render_chat_interface(notebook_id):
                         citations = [{"document_id": str(c.document_id), "page": c.page_number} for c in context_chunks]
 
                         message_placeholder.markdown(answer)
-                        st.session_state[state_key].append({"role": "assistant", "content": answer, "citations": citations})
+                        assistant_msg = {"role": "assistant", "content": answer, "citations": citations}
+                        st.session_state[state_key].append(assistant_msg)
+
+                        db_assistant_msg = ChatMessage(notebook_id=str(notebook_id), role=assistant_msg["role"], content=assistant_msg["content"], citations=citations)
+                        db.add(db_assistant_msg)
+                        db.commit()
 
                         if citations:
                             st.caption("Fontes:")
@@ -217,20 +295,26 @@ def render_admin_dashboard():
     with get_db() as db:
 
         st.subheader("Upload de Regulamentação")
-        uploaded_file = st.file_uploader("Clique para subir arquivos PDF", type=["pdf", "docx", "png", "jpg"], key="global_uploader")
+        uploaded_files = st.file_uploader("Clique para subir arquivos PDF", type=["pdf", "docx", "png", "jpg"], key="global_uploader", accept_multiple_files=True)
 
-        if uploaded_file is not None:
+        if uploaded_files:
             if st.button("Enviar para Base Global"):
                 with st.spinner("Processando..."):
                     temp_dir = "temp_storage"
                     os.makedirs(temp_dir, exist_ok=True)
-                    file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
 
-                    # run async function in sync context
-                    asyncio.run(ingestion_service.ingest_document(db, file_path, uploaded_file.name, is_global=True))
-                    st.success("Documento processado com sucesso!")
+                    for uploaded_file in uploaded_files:
+                        file_size_mb = uploaded_file.size / (1024 * 1024)
+                        if file_size_mb > 100:
+                            st.warning(f"O arquivo {uploaded_file.name} possui {file_size_mb:.2f}MB (maior que 100MB). O processamento em segundo plano pode demorar. Você pode fechar e voltar mais tarde.")
+
+                        file_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{uploaded_file.name}")
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                        # run async function in sync context
+                        asyncio.run(ingestion_service.ingest_document(db, file_path, uploaded_file.name, is_global=True))
+                    st.success("Documento(s) processado(s) com sucesso!")
                     st.rerun()
 
         st.subheader("Documentos Globais")
