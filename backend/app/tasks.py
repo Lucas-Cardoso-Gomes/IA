@@ -3,14 +3,27 @@ import asyncio
 import json
 from backend.app.database import SessionLocal
 
+def run_async(coro):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    return loop.run_until_complete(coro)
+
+
 @celery_app.task(name="ingest_document_task")
 def ingest_document_task(file_path: str, filename: str, notebook_id=None, is_global=False):
     from backend.app.services.ingestion import ingestion_service
     db = SessionLocal()
     try:
         # Run the async ingestion service synchronously
-        loop = asyncio.get_event_loop()
-        doc = loop.run_until_complete(
+        doc = run_async(
             ingestion_service.ingest_document(db, file_path, filename, notebook_id, is_global)
         )
         return {"status": "success", "document_id": str(doc.id)}
@@ -24,8 +37,7 @@ def audit_notebook_task(notebook_id: str):
     from backend.app.agents.validator import auditor_agent
     db = SessionLocal()
     try:
-        loop = asyncio.get_event_loop()
-        result_str = loop.run_until_complete(
+        result_str = run_async(
             auditor_agent.audit_notebook(db, notebook_id)
         )
         return json.loads(result_str)
