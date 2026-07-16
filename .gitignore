@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 pmlogistica.db
 /temp_storage
-backend/chroma_db/chroma.sqlite3
+chroma_db/
+*.sqlite3

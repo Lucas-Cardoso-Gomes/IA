@@ -12,8 +12,11 @@ def run():
         sys.exit(1)
 
     print("Iniciando migrações Alembic...")
+    env = os.environ.copy()
+    # Override DB_CONNECTION so the db is created in the root directory while cwd is 'backend'
+    env["DB_CONNECTION"] = "sqlite:///../pmlogistica.db"
     try:
-        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd="backend", check=True)
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd="backend", env=env, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Erro ao executar migrações: {e}")
 
@@ -21,7 +24,7 @@ def run():
     fastapi_process = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"])
 
     print("Iniciando o Celery Worker...")
-    celery_process = subprocess.Popen([sys.executable, "-m", "celery", "-A", "backend.app.celery_app.celery_app", "worker", "--loglevel=info"])
+    celery_process = subprocess.Popen([sys.executable, "-m", "celery", "-A", "backend.app.celery_app.celery_app", "worker", "--loglevel=info", "--pool=solo"])
 
     # Pequeno atraso para garantir que os serviços de backend subam
     time.sleep(3)
