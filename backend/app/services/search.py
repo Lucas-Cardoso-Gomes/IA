@@ -14,7 +14,7 @@ def cosine_similarity(v1, v2):
 class SearchService:
     def hybrid_search(self, db: Session, query: str, notebook_id: str = None, top_k=5):
         query_embedding = embedding_service.get_embedding(query)
-        query_words = set(query.lower().split())
+        query_words = set(str(query or "").lower().split())
 
         # Puxa todos os fragmentos do banco
         if notebook_id:
@@ -33,7 +33,7 @@ class SearchService:
                 semantic_score = cosine_similarity(query_embedding, chunk.embedding)
             
             # 2. Busca Lexical (Palavras-chave)
-            chunk_words = set(chunk.content.lower().split())
+            chunk_words = set(str(chunk.content or "").lower().split())
             overlap = len(query_words.intersection(chunk_words))
             lexical_score = overlap / len(query_words) if query_words else 0
 
