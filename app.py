@@ -9,6 +9,7 @@ from backend.app.models.models import Notebook, Document
 import requests
 import time
 from backend.app.services.search import search_service
+from backend.app.services.ingestion import ingestion_service
 from backend.app.database import SessionLocal, engine, Base
 from backend.app.tasks import ingest_document_task, audit_notebook_task
 from backend.app.models.models import Notebook, Document
