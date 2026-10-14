@@ -1,7 +1,12 @@
-/frontend/node_modules
 __pycache__/
 *.pyc
-pmlogistica.db
-/temp_storage
-chroma_db/
-*.sqlite3
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+data/
+*.lance
+*.jpg
+*.tmp
+.env
